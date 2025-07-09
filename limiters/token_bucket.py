@@ -105,10 +105,10 @@ class SyncTokenBucket(TokenBucketBase, SyncLuaScriptBase):
 class AsyncTokenBucket(TokenBucketBase, AsyncLuaScriptBase):
     script_name: ClassVar[str] = 'token_bucket.lua'
 
-    async def wait_for_tokens(self, tokens: int = 1, *, timeout: float | None = None) -> None:
+    async def waittime_for_tokens(self, tokens: float = 1, *, timeout: float | None = None) -> float | None:
         """
         Call the token bucket Lua script, receive a datetime for
-        when to wake up, then sleep up until that point in time.
+        when to wake up, then return the seconds to wait
         """
 
         # Retrieve timestamp for when to wake up from Redis
@@ -120,14 +120,13 @@ class AsyncTokenBucket(TokenBucketBase, AsyncLuaScriptBase):
             keys=[self.key],
             args=args,
         )
+        assert isinstance(timestamp, int)
         if timestamp < 0:
-            raise TimeoutError("Can't be fulfilled")
+            return None
 
         # Estimate sleep time
         sleep_time = self.parse_timestamp(timestamp)
-
-        # Sleep before returning
-        await asyncio.sleep(sleep_time)
+        return sleep_time
 
     async def __aenter__(self) -> None:
         """
