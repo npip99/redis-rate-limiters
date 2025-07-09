@@ -115,7 +115,7 @@ class AsyncTokenBucket(TokenBucketBase, AsyncLuaScriptBase):
         seconds, microseconds = create_redis_time_tuple()
         args = [self.capacity, self.refill_amount, self.refill_frequency, seconds, microseconds, tokens]
         if timeout is not None:
-            args.append(timeout)
+            args.append(timeout*1000)
         timestamp = await self.script(
             keys=[self.key],
             args=args,
