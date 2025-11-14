@@ -5,7 +5,11 @@ from datetime import datetime
 from types import TracebackType
 from typing import ClassVar
 
-from pydantic import BaseModel, Field
+import pydantic
+if pydantic.VERSION.startswith('1.'):
+    from pydantic import BaseModel, Field
+else:
+    from pydantic.v1 import BaseModel, Field
 
 from limiters import MaxSleepExceededError
 from limiters.base import AsyncLuaScriptBase, SyncLuaScriptBase
@@ -78,7 +82,7 @@ class SyncTokenBucket(TokenBucketBase, SyncLuaScriptBase):
         seconds, microseconds = create_redis_time_tuple()
         timestamp: int = self.script(
             keys=[self.key],
-            args=[self.capacity, self.refill_amount, self.refill_frequency, seconds, microseconds],
+            args=[self.capacity, self.refill_amount, self.refill_frequency, seconds, microseconds, 1],
         )
 
         # Estimate sleep time
@@ -101,6 +105,29 @@ class SyncTokenBucket(TokenBucketBase, SyncLuaScriptBase):
 class AsyncTokenBucket(TokenBucketBase, AsyncLuaScriptBase):
     script_name: ClassVar[str] = 'token_bucket.lua'
 
+    async def waittime_for_tokens(self, tokens: float = 1, *, timeout: float | None = None) -> float | None:
+        """
+        Call the token bucket Lua script, receive a datetime for
+        when to wake up, then return the seconds to wait
+        """
+
+        # Retrieve timestamp for when to wake up from Redis
+        seconds, microseconds = create_redis_time_tuple()
+        args = [self.capacity, self.refill_amount, self.refill_frequency, seconds, microseconds, tokens]
+        if timeout is not None:
+            args.append(timeout*1000)
+        timestamp = await self.script(
+            keys=[self.key],
+            args=args,
+        )
+        assert isinstance(timestamp, int)
+        if timestamp < 0:
+            return None
+
+        # Estimate sleep time
+        sleep_time = self.parse_timestamp(timestamp)
+        return sleep_time
+
     async def __aenter__(self) -> None:
         """
         Call the token bucket Lua script, receive a datetime for
@@ -111,7 +138,7 @@ class AsyncTokenBucket(TokenBucketBase, AsyncLuaScriptBase):
         seconds, microseconds = create_redis_time_tuple()
         timestamp = await self.script(
             keys=[self.key],
-            args=[self.capacity, self.refill_amount, self.refill_frequency, seconds, microseconds],
+            args=[self.capacity, self.refill_amount, self.refill_frequency, seconds, microseconds, 1],
         )
 
         # Estimate sleep time
