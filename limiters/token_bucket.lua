@@ -75,8 +75,14 @@ if data then
         local new_tokens = math.min(tokens + slots_passed * refill_amount, capacity)
         debug_echo("Refilling: " .. tokens .. " + (" .. slots_passed .. " * " .. refill_amount .. ") = " .. new_tokens .. " (capped at " .. capacity .. ")")
         tokens = new_tokens
-        -- Update the slot to this run, adding a penalty for execution time
-        slot = now + 20
+        -- Update the slot to this run, ensuring a minimum 20ms spacing since the previous slot
+        local required_gap = 20
+        local since_last = now - slot
+        if since_last < required_gap then
+            slot = now + (required_gap - since_last)
+        else
+            slot = now
+        end
         debug_echo("Updated slot to: " .. slot)
     end
 else
